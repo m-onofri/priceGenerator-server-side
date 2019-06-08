@@ -22,7 +22,7 @@ router.get('/', function(req, res, next) {
 
 router.post('/addNewPeriod', function(req, res, next) {
     const period = new PriceList({
-        name: req.body.name,
+        name: req.body.name.toUpperCase(),
         period: req.body.period,
         start: new Date(req.body.start.split("-")),
         end: new Date(req.body.end.split("-")),
@@ -47,10 +47,10 @@ router.post('/addNewPeriod', function(req, res, next) {
 
 
 router.post('/createPriceList', function(req, res, next) {
-    const periods = JSON.parse(req.body.pricelist)
+    const periods = JSON.parse(req.body.priceList)
         .map(p => {
             return ({
-                name: p[1].name,
+                name: p[1].name.toUpperCase(),
                 period: p[1].period,
                 start: new Date(p[1].start.split("-")),
                 end: new Date(p[1].end.split("-")),
@@ -65,12 +65,46 @@ router.post('/createPriceList', function(req, res, next) {
                     sing: parseFloat(p[1].sing)
                 }
             });
-        })  
+        });
+    
+    const periodsNames = periods.map(p => p.period);
+    const periodsNamesSet = new Set(periodsNames);
+    if (periodsNames.length !== periodsNamesSet.size) {
+        return res.send({
+            success: false,
+            message: 'Error: periods names must be unique.'
+        });
+    }
+    for (let period of periods) {
+        if (period.start.getTime() >= period.end.getTime()) {
+            return res.send({
+                success: false,
+                message: 'Error: arrival date must be previous than departure date.'
+            });
+        }
+    }
+
+    if (periods.length > 1) {
+        const newPeriods = [...periods];
+        newPeriods.sort((a, b) => a.start.getTime() - b.start.getTime());
+        for (let i = 0; i < (newPeriods.length - 1); i++) {
+            if (newPeriods[i].end.getTime() > newPeriods[i + 1].start.getTime()) {
+                return res.send({
+                    success: false,
+                    message: 'Error: date ranges cannot overlap.'
+                });
+            }
+        }
+    }
+
     PriceList
     .insertMany(periods)
     .then(result => {
         console.log("Price list saved!");
-        res.redirect("http://localhost:3000/admin");
+        return res.send({
+            success: true,
+            message: 'Price list saved!'
+          });
     })
     .catch(err => console.log(err));
 });
@@ -90,7 +124,7 @@ router.post('/manage', function(req, res, next) {
         const start = new Date(req.body.start.split("-"));
         const end = new Date(req.body.end.split("-"));
         PriceList.update({_id: req.body.id},{$set:{
-                                                name: req.body.name,
+                                                name: req.body.name.toUpperCase(),
                                                 period: req.body.period,
                                                 start: start,
                                                 end: end,
