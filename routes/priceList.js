@@ -111,29 +111,63 @@ router.post('/createPriceList', function(req, res, next) {
 
 router.post('/manage', function(req, res, next) {
     if (req.body.update) {
-        const prices = {
-            ad: parseFloat(req.body.ad),
-            ad34: parseFloat(req.body.ad34),
-            chd3: parseFloat(req.body.chd3),
-            chd4: parseFloat(req.body.chd4),
-            inf: parseFloat(req.body.inf),
-            culla: parseFloat(req.body.culla),
-            animal: parseFloat(req.body.animal),
-            sing: parseFloat(req.body.sing)
-        }
-        const start = new Date(req.body.start.split("-"));
-        const end = new Date(req.body.end.split("-"));
-        PriceList.update({_id: req.body.id},{$set:{
-                                                name: req.body.name.toUpperCase(),
-                                                period: req.body.period,
-                                                start: start,
-                                                end: end,
-                                                prices: prices}
-                                            },{multi:true,new:true})
-        .then(docs => {
-            console.log("Price List updated");
-            res.redirect("http://localhost:3000/admin");
-        }).catch((err)=>reject(err));
+        const priceList = JSON.parse(req.body.priceList);
+        priceList.start = new Date(priceList.start);
+        priceList.end = new Date(priceList.end);
+        PriceList
+            .find({name: priceList.name.toUpperCase()})
+            .then(data => {
+                const filterData = data.filter(d => d._id.toString() !== priceList._id);
+                const periods = [...filterData, priceList];
+                console.log(periods);
+                const periodsNames = periods.map(p => p.period);
+                const periodsNamesSet = new Set(periodsNames);
+                if (periodsNames.length !== periodsNamesSet.size) {
+                    return res.send({
+                        success: false,
+                        message: 'Error: periods names must be unique.'
+                    });
+                }
+                for (let period of periods) {
+                    if (period.start.getTime() >= period.end.getTime()) {
+                        return res.send({
+                            success: false,
+                            message: 'Error: arrival date must be previous than departure date.'
+                        });
+                    }
+                }
+
+                if (periods.length > 1) {
+                    const newPeriods = [...periods];
+                    newPeriods.sort((a, b) => a.start.getTime() - b.start.getTime());
+                    for (let i = 0; i < (newPeriods.length - 1); i++) {
+                        if (newPeriods[i].end.getTime() > newPeriods[i + 1].start.getTime()) {
+                            return res.send({
+                                success: false,
+                                message: 'Error: date ranges cannot overlap.'
+                            });
+                        }
+                    }
+                }
+                return periods;
+            })
+            .then(result => {
+                PriceList.update({_id: req.body.id},{$set:{
+                    name: priceList.name.toUpperCase(),
+                    period: priceList.period,
+                    start: priceList.start,
+                    end: priceList.end,
+                    prices: priceList.prices}
+                },{multi:true,new:true})
+                .then(docs => {
+                console.log("Price List updated");
+                return res.send({
+                    success: true,
+                    message: 'Price list saved!'
+                  });
+                }).catch((err)=>reject(err));
+            });
+
     } else if (req.body.delete) {
         PriceList.findOneAndRemove({_id: req.body.id})
             .then(docs => {
